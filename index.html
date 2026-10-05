@@ -35,10 +35,13 @@
       margin-right: 10px;
     }
 
-    button:not(:last-of-type) {
-      margin-right: 8px;
+    button {
       border-radius: 5px;
       border: 1px solid black;
+    }
+
+    button:not(:last-of-type) {
+      margin-right: 8px;
     }
 
     .active {
@@ -58,12 +61,34 @@
       color: #1ba031;
     }
 
-    .restored {
+    .updated {
       color: #00a2ff;
     }
 
     .missing {
       color: #ff392b;
+    }
+
+    .versions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .versions h5 {
+      margin: 4px 0;
+    }
+
+    .cached-version {
+      display: none;
+    }
+
+    .show-cached .versions {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .show-cached .cached-version {
+      display: block;
     }
   </style>
 
@@ -77,185 +102,220 @@
   <p>Created for my personal archiving needs.</p>
   <p id="cache"></p>
   <p id="stats"></p>
+  <p>
+    <label>
+      <input type="checkbox" id="show-cached">
+      Show cached versions of updated and changed reviews
+    </label>
+  </p>
 
   <hr>
   <ol id="reviews">Loading...</ol>
 
   <script>
+    const STATUSES = ['old', 'new', 'changed', 'updated', 'missing'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
     window.addEventListener('DOMContentLoaded', async () => {
-      const cacheTimestamp = '2024-02-14-12-04-47';
+      try {
+        const cache = await fetchJSON('assets/cache.json');
+        const reviews = mergeReviews(await fetchJSON('assets/reviews.json'), cache.reviews);
 
-      const cache = await loadCache(cacheTimestamp);
-      const fileNames = await loadFileNames();
-      const reviews = await loadReviews(fileNames, cache.reviews);
-
-      updateStatsDOM(reviews);
-      updateReviewsDOM(reviews);
-      updateCacheDOM(cacheTimestamp);
-
-      async function loadCache(cacheTimestamp) {
-        const cache = await fetch(`assets/cache/cache-${cacheTimestamp}.json`).then(e => e.json());
-        return cache;
-      }
-
-      async function loadFileNames() {
-        const reviewsCSV = await fetch('assets/reviews.csv').then(e => e.text());
-        const reviewFileNames = reviewsCSV.split(',').map(e => e.substr(e.indexOf('assets/')));
-
-        return reviewFileNames;
-      }
-
-      async function loadReviews(fileNames, cachedReviews) {
-        const reviews = await Promise.all(fileNames.filter(e => e.endsWith('.json')).map(e => fetch(e).then(e => e.json())));
-
-        for (const cachedReview of cachedReviews) {
-          for (const review of reviews) {
-            if (review.id === cachedReview.id) {
-              if (review.date !== cachedReview.date) {
-                review.status = 'restored';
-              }
-
-              else if (review.content !== cachedReview.content) {
-                review.status = 'changed';
-              }
-            }
-          }
-        }
-
-        for (const deletedReview of cachedReviews.filter(e => !reviews.map(e => e.id).includes(e.id))) {
-          reviews.push({
-            ...deletedReview,
-            status: 'missing'
-          });
-        }
-
-        for (const review of reviews) {
-          if (!review.status) {
-            if (cachedReviews.map(e => e.id).includes(review.id)) {
-              review.status = 'old';
-            }
-
-            else {
-              review.status = 'new';
-            }
-          }
-        }
-
-        return reviews.sort((a, b) => new Date(a.date) - new Date(b.date));
-      }
-
-      function updateReviewsDOM(reviews) {
-        const reviewsElement = document.getElementById('reviews');
-        reviewsElement.innerHTML = '';
-
-        for (const review of reviews) {
-          const reviewElement = document.createElement('li');
-          const reviewDetails = document.createElement('details');
-          const reviewSummary = document.createElement('summary');
-          const reviewTextArea = document.createElement('textarea');
-          const reviewTitle = document.createElement('h4');
-          const reviewRating = document.createElement('span');
-          const reviewDate = document.createElement('span');
-          const reviewLink = document.createElement('a');
-          const reviewId = document.createElement('span');
-          const reviewStatus = document.createElement('span');
-          const reviewType = document.createElement('span');
-
-          reviewTextArea.value = review.content;
-          reviewTextArea.setAttribute('readonly', true);
-
-          reviewLink.textContent = review.title;
-          reviewLink.setAttribute('href', review.url);
-
-          reviewId.textContent = `[${review.id}]`;
-          reviewType.textContent = `[${review.type}]`;
-          reviewDate.textContent = `${review.date} ${review.time}`;
-          reviewRating.textContent = `${review.rating}/10 [${review.recommendation}]`;
-
-          reviewStatus.textContent = `[${review.status}]`;
-          reviewStatus.classList.add(review.status);
-
-          reviewElement.setAttribute('id', review.id);
-          reviewElement.setAttribute('type', review.type);
-          reviewElement.setAttribute('status', review.status);
-
-          reviewTitle.append(reviewLink);
-          reviewSummary.append(reviewStatus);
-          reviewSummary.append(reviewId);
-          reviewSummary.append(reviewType);
-          reviewSummary.append(reviewTitle);
-          reviewSummary.append(reviewRating);
-          reviewSummary.append(reviewDate);
-
-          reviewDetails.append(reviewTextArea);
-          reviewDetails.append(reviewSummary);
-          reviewElement.append(reviewDetails);
-          reviewsElement.append(reviewElement);
-        }
-      }
-
-      function updateStatsDOM(reviews) {
-        const statsElement = document.getElementById('stats');
-        const reviewsElement = document.getElementById('reviews');
-
-        const allButton = document.createElement('button');
-        const oldButton = document.createElement('button');
-        const newButton = document.createElement('button');
-        const changedButton = document.createElement('button');
-        const missingButton = document.createElement('button');
-
-        allButton.textContent = `All Reviews ${reviews.length}`;
-        oldButton.textContent = `Old Reviews ${reviews.filter(e => e.status === 'old').length}`;
-        newButton.textContent = `New Reviews ${reviews.filter(e => e.status === 'new').length}`;
-        changedButton.textContent = `Changed Reviews ${reviews.filter(e => e.status === 'changed').length}`;
-        missingButton.textContent = `Missing Reviews ${reviews.filter(e => e.status === 'missing').length}`;
-
-        allButton.addEventListener('click', filterHandler.bind(this, 'all'));
-        oldButton.addEventListener('click', filterHandler.bind(this, 'old'));
-        newButton.addEventListener('click', filterHandler.bind(this, 'new'));
-        changedButton.addEventListener('click', filterHandler.bind(this, 'changed'));
-        missingButton.addEventListener('click', filterHandler.bind(this, 'missing'));
-
-        statsElement.appendChild(allButton);
-        statsElement.appendChild(oldButton);
-        statsElement.appendChild(newButton);
-        statsElement.appendChild(changedButton);
-        statsElement.appendChild(missingButton);
-
-        allButton.click();
-
-        function filterHandler(status, e) {
-          const target = e.target;
-
-          for (const button of statsElement.childNodes) {
-            if (button === target) {
-              button.classList.add('active');
-            } else {
-              button.classList.remove('active');
-            }
-          }
-
-          for (const review of reviewsElement.querySelectorAll('#reviews li')) {
-            if (status === 'all') {
-              review.style.display = 'list-item';
-            } else {
-              const reviewStatus = review.getAttribute('status');
-
-              if (status === reviewStatus) {
-                review.style.display = 'list-item';
-              } else {
-                review.style.display = 'none';
-              }
-            }
-          }
-        }
-      }
-
-      function updateCacheDOM(cacheTimestamp) {
-        const cacheElement = document.getElementById('cache');
-        cacheElement.textContent = `Last cache on ${cacheTimestamp}.`;
+        updateStatsDOM(reviews);
+        updateReviewsDOM(reviews);
+        updateCacheDOM(cache.timestamp);
+        setupCachedToggle();
+      } catch (error) {
+        console.error(error);
+        document.getElementById('reviews').textContent = `Failed to load the reviews: ${error.message}`;
       }
     });
+
+    async function fetchJSON(url) {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`GET ${url} returned HTTP ${response.status}.`);
+      }
+
+      return response.json();
+    }
+
+    function reviewKey(review) {
+      return `${review.type}:${review.id}`;
+    }
+
+    // Whitespace is ignored so formatting changes on MAL's end don't count as edits.
+    function normalizeContent(content) {
+      return (content ?? '').replace(/\s+/g, '');
+    }
+
+    function reviewTime(review) {
+      if (review.datetime) {
+        return new Date(review.datetime).getTime();
+      }
+
+      // Older cache entries only have MAL's display strings, e.g. "Sep 1, 2019" and "12:41 PM".
+      const match = `${review.date} ${review.time}`.match(/^(\w{3}) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)$/);
+
+      if (!match) {
+        return 0;
+      }
+
+      const [, month, day, year, hours, minutes, period] = match;
+      return new Date(+year, MONTHS.indexOf(month), +day, (+hours % 12) + (period === 'PM' ? 12 : 0), +minutes).getTime();
+    }
+
+    function mergeReviews(reviews, cachedReviews) {
+      const cachedByKey = new Map(cachedReviews.map(e => [reviewKey(e), e]));
+      const currentKeys = new Set(reviews.map(reviewKey));
+
+      for (const review of reviews) {
+        const cachedReview = cachedByKey.get(reviewKey(review));
+
+        if (!cachedReview) {
+          review.status = 'new';
+        } else if (review.date !== cachedReview.date) {
+          review.status = 'updated';
+          review.cached = cachedReview;
+        } else if (normalizeContent(review.content) !== normalizeContent(cachedReview.content)) {
+          review.status = 'changed';
+          review.cached = cachedReview;
+        } else {
+          review.status = 'old';
+        }
+      }
+
+      for (const cachedReview of cachedReviews) {
+        if (!currentKeys.has(reviewKey(cachedReview))) {
+          reviews.push({ ...cachedReview, status: 'missing' });
+        }
+      }
+
+      return reviews.sort((a, b) => reviewTime(a) - reviewTime(b));
+    }
+
+    function updateReviewsDOM(reviews) {
+      const reviewsElement = document.getElementById('reviews');
+      reviewsElement.innerHTML = '';
+
+      for (const review of reviews) {
+        const reviewElement = document.createElement('li');
+        const reviewDetails = document.createElement('details');
+        const reviewSummary = document.createElement('summary');
+        const reviewTextArea = createReadOnlyTextArea(review.content);
+        const reviewTitle = document.createElement('h4');
+        const reviewRating = document.createElement('span');
+        const reviewDate = document.createElement('span');
+        const reviewLink = document.createElement('a');
+        const reviewId = document.createElement('span');
+        const reviewStatus = document.createElement('span');
+        const reviewType = document.createElement('span');
+
+        reviewLink.textContent = review.title;
+        reviewLink.setAttribute('href', review.url);
+
+        reviewId.textContent = `[${review.id}]`;
+        reviewType.textContent = `[${review.type}]`;
+        reviewDate.textContent = `${review.date} ${review.time}`;
+        reviewRating.textContent = `${review.rating}/10 [${review.recommendation}]`;
+
+        reviewStatus.textContent = `[${review.status}]`;
+        reviewStatus.classList.add(review.status);
+
+        reviewElement.id = `review-${review.type}-${review.id}`;
+        reviewElement.dataset.type = review.type;
+        reviewElement.dataset.status = review.status;
+
+        reviewTitle.append(reviewLink);
+        reviewSummary.append(reviewStatus, reviewId, reviewType, reviewTitle, reviewRating, reviewDate);
+
+        if (review.cached) {
+          reviewDetails.append(reviewSummary, createVersionsElement(review, reviewTextArea));
+        } else {
+          reviewDetails.append(reviewSummary, reviewTextArea);
+        }
+        reviewElement.append(reviewDetails);
+        reviewsElement.append(reviewElement);
+      }
+    }
+
+    function createVersionsElement(review, reviewTextArea) {
+      const versionsElement = document.createElement('div');
+      versionsElement.classList.add('versions');
+
+      versionsElement.append(
+        createVersionElement(`Current (${review.date} ${review.time})`, reviewTextArea),
+        createVersionElement(`Cached (${review.cached.date} ${review.cached.time})`, createReadOnlyTextArea(review.cached.content), 'cached-version')
+      );
+
+      return versionsElement;
+    }
+
+    function createVersionElement(label, textArea, className) {
+      const versionElement = document.createElement('div');
+      const versionLabel = document.createElement('h5');
+
+      versionLabel.textContent = label;
+      versionElement.append(versionLabel, textArea);
+
+      if (className) {
+        versionElement.classList.add(className);
+      }
+
+      return versionElement;
+    }
+
+    function createReadOnlyTextArea(content) {
+      const textArea = document.createElement('textarea');
+
+      textArea.value = content.trim();
+      textArea.readOnly = true;
+
+      return textArea;
+    }
+
+    function setupCachedToggle() {
+      const toggle = document.getElementById('show-cached');
+      const update = () => document.body.classList.toggle('show-cached', toggle.checked);
+
+      toggle.addEventListener('change', update);
+      update();
+    }
+
+    function updateStatsDOM(reviews) {
+      const statsElement = document.getElementById('stats');
+      const reviewsElement = document.getElementById('reviews');
+      const buttons = [];
+
+      for (const status of ['all', ...STATUSES]) {
+        const count = status === 'all' ? reviews.length : reviews.filter(e => e.status === status).length;
+        const button = document.createElement('button');
+
+        button.textContent = `${status[0].toUpperCase()}${status.slice(1)} Reviews ${count}`;
+        button.addEventListener('click', () => filter(status, button));
+
+        buttons.push(button);
+        statsElement.append(button);
+      }
+
+      filter('all', buttons[0]);
+
+      function filter(status, activeButton) {
+        for (const button of buttons) {
+          button.classList.toggle('active', button === activeButton);
+        }
+
+        for (const review of reviewsElement.querySelectorAll('li')) {
+          review.style.display = status === 'all' || review.dataset.status === status ? 'list-item' : 'none';
+        }
+      }
+    }
+
+    function updateCacheDOM(cacheTimestamp) {
+      const cacheElement = document.getElementById('cache');
+      cacheElement.textContent = `Last cache on ${cacheTimestamp}.`;
+    }
   </script>
 </body>
 
