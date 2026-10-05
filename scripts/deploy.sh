@@ -1,18 +1,21 @@
 #! /bin/bash
+set -euo pipefail
 
-mkdir -p build/assets/cache
+MAL_USER="${1:-${MAL_USER:-Eoussama}}"
+OUTPUT_DIR="out/$MAL_USER"
+
+if [ ! -f "$OUTPUT_DIR/reviews.json" ]; then
+    echo "::error::$OUTPUT_DIR/reviews.json not found, run ./scripts/run.sh first." >&2
+    exit 1
+fi
+
+latest_cache=$(ls cache/cache-*.json | sort | tail -n 1)
+
+rm -rf build
+mkdir -p build/assets
 
 cp public/* build
-cp out/**/*.json build/assets
-cp cache/*.json build/assets/cache
+cp -r "$OUTPUT_DIR/reviews" "$OUTPUT_DIR/reviews.json" build/assets
+cp "$latest_cache" build/assets/cache.json
 
-file_array=()
-
-for file in build/assets/*.json; do
-    if [ -f "$file" ]; then
-        file_array+=("$file")
-    fi
-done
-
-json_array=$(printf "%s," "${file_array[@]}" | sed 's/$//')
-echo "$json_array" > "build/assets/reviews.csv"
+echo "Built preview page with $(basename "$latest_cache")."

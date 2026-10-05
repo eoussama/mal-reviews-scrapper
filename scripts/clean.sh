@@ -1,3 +1,4 @@
 #! /bin/sh
+set -eu
 
-rm -rf out/* !.gitkeep
+find out -mindepth 1 ! -name .gitkeep -exec rm -rf {} +

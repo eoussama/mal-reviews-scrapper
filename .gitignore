@@ -1,4 +1,5 @@
 build
 out/*
-.venv
 !out/.gitkeep
+.venv
+__pycache__
